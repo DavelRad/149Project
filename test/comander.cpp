@@ -278,7 +278,6 @@ void end()
 
     // 4. Update the running state to -1 (basically mark no process as running).
     runningState = -1;
-    schedule();
   }
   else
   {
