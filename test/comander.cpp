@@ -442,6 +442,7 @@ void calculateAverageTurnaroundTime()
 }
 
 // Implements the Q command.
+// Implements the Q command.
 void quantum()
 {
   if (runningState == -1)
@@ -500,6 +501,10 @@ void quantum()
     replace(instruction.stringArg);
     break;
   }
+
+  // Update the PCB entry with the current CPU state
+  pcbTable[runningState].programCounter = cpu.programCounter;
+  pcbTable[runningState].value = cpu.value;
 
   ++timestamp;
   schedule();
