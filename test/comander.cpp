@@ -278,6 +278,7 @@ void end()
 
     // 4. Update the running state to -1 (basically mark no process as running).
     runningState = -1;
+    schedule();
   }
   else
   {
@@ -287,21 +288,7 @@ void end()
 // Implements the F operation.
 void fork(int value)
 {
-  // TODO: Implement
-  // 1. Get a free PCB index (pcbTable.size())
-  // 2. Get the PCB entry for the current running process.
-  // 3. Ensure the passed-in value is not out of bounds.
-  // 4. Populate the PCB entry obtained in #1
-  // a. Set the process ID to the PCB index obtained in #1.
-  // b. Set the parent process ID to the process ID of the running process (use
-  // the running process's PCB entry to get this). c. Set the program counter to
-  // the cpu program counter. d. Set the value to the cpu value. e. Set the
-  // priority to the same as the parent process's priority. f. Set the state to
-  // the ready state. g. Set the start time to the current timestamp
-  // 5. Add the pcb index to the ready queue.
-  // 6. Increment the cpu's program counter by the value read in #3
-
-  // 1. Get a free PCB index
+  // Get a free PCB index
   int freeIndex = pcbTable.size();
   pcbTable.resize(freeIndex + 1); // Ensure space for the new process
 
@@ -318,10 +305,11 @@ void fork(int value)
     return;
   }
 
+  // Initialize the new process (child)
   pcbTable[freeIndex].processId = freeIndex;
   pcbTable[freeIndex].parentProcessId = parentProcess.processId;
-  pcbTable[freeIndex].programCounter = parentProcess.programCounter + 1;
-  pcbTable[freeIndex].value = cpu.value;
+  pcbTable[freeIndex].programCounter = parentProcess.programCounter + 1; // Child starts from the next instruction
+  pcbTable[freeIndex].value = cpu.value;                                 // Inherit parent's value
   pcbTable[freeIndex].priority = parentProcess.priority;
   pcbTable[freeIndex].state = STATE_READY;
   pcbTable[freeIndex].startTime = timestamp;
@@ -331,10 +319,11 @@ void fork(int value)
 
   // Update the parent's program counter to continue after the fork
   parentProcess.programCounter += value + 1;
-  parentProcess.state = STATE_READY;
-  readyState.push_back(parentProcess.processId);
-  runningState = -1; // Force a reschedule
+  parentProcess.state = STATE_RUNNING; // Ensure parent stays running
+
+  // Don't push the parent to the ready queue until it blocks or ends
 }
+
 // Implements the R operation.
 void replace(string &argument)
 {
@@ -493,6 +482,7 @@ void quantum()
     break;
   case 'E':
     end();
+    schedule();
     break;
   case 'F':
     fork(instruction.intArg);
