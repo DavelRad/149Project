@@ -70,7 +70,8 @@ enum State
 {
   STATE_READY,
   STATE_RUNNING,
-  STATE_BLOCKED
+  STATE_BLOCKED,
+  STATE_TERMINATED
 };
 class PcbEntry
 {
@@ -189,30 +190,40 @@ void decrement(int value)
   cpu.value -= value;
 }
 // Performs scheduling.
-void schedule()
-{
-  if (runningState != -1)
-  {
-    return; // A process is already running, so no need to schedule another now.
-  }
-  if (readyState.empty())
-  {
-    cout << "Ready queue is empty. No processes to schedule." << endl;
-    return;
-  }
+void schedule() {
+    if (runningState != -1) {
+        cout << "A process is already running." << endl;
+        return; // Ensures we don't override an already running process
+    }
+    
+    bool foundReadyProcess = false;
+    while (!readyState.empty() && !foundReadyProcess) {
+        int nextProcessId = readyState.front();
+        readyState.pop_front();
 
-  int nextProcessId = readyState.front();
-  readyState.pop_front();
+        PcbEntry &nextProcess = pcbTable[nextProcessId];
+        if (nextProcess.state == STATE_TERMINATED) {
+            continue; // Skip terminated processes
+        }
 
-  PcbEntry &nextProcess = pcbTable[nextProcessId];
-  nextProcess.state = STATE_RUNNING;
-  cpu.pProgram = &nextProcess.program;
-  cpu.programCounter = nextProcess.programCounter;
-  cpu.value = nextProcess.value;
-  runningState = nextProcessId;
+        nextProcess.state = STATE_RUNNING;
+        cpu.pProgram = &nextProcess.program;
+        cpu.programCounter = nextProcess.programCounter;
+        cpu.value = nextProcess.value;
+        runningState = nextProcessId;
+        foundReadyProcess = true;
 
-  cout << "Scheduling process " << nextProcessId << " with program counter " << cpu.programCounter << " and value " << cpu.value << endl;
+        cout << "Scheduling process " << nextProcessId << " with program counter " << cpu.programCounter << " and value " << cpu.value << endl;
+    }
+
+    if (!foundReadyProcess) {
+        runningState = -1; // No ready process found, ensure no process is mistakenly set as running
+        cout << "Ready queue is empty or no viable process found. No process scheduled." << endl;
+    }
 }
+
+
+
 
 // Implements the B operation.
 void block()
@@ -253,37 +264,23 @@ void block()
   }
 }
 // Implements the E operation.
-void end()
-{
-  // TODO: Implement
-  // 1. Get the PCB entry of the running process.
-  // 2. Update the cumulative time difference (increment it by timestamp + 1 -
-  // start time of the process).
-  // 3. Increment the number of terminated processes.
-  // 4. Update the running state to -1 (basically mark no process as running).
-  // Note that a new process will be chosen to run later (via the Q command code
-  // calling the schedule function).
-
-  // 1. Get the PCB entry of the running process.
-  if (runningState != -1)
-  { // Ensure there is a running process to end
-    PcbEntry &currentProcess = pcbEntry[runningState];
-
-    // 2. Update the cumulative time difference (increment it by timestamp + 1 -
-    // start time of the process).
-    cumulativeTimeDiff += (timestamp + 1 - currentProcess.startTime);
-
-    // 3. Increment the number of terminated processes.
-    numTerminatedProcesses++;
-
-    // 4. Update the running state to -1 (basically mark no process as running).
-    runningState = -1;
-  }
-  else
-  {
-    cout << "No process is currently running to end." << endl;
-  }
+void end() {
+    if (runningState != -1) {
+        PcbEntry &currentProcess = pcbTable[runningState];
+        currentProcess.state = STATE_TERMINATED;
+        cout << "Process " << runningState << " terminated." << endl;
+        
+        cumulativeTimeDiff += (timestamp + 1 - currentProcess.startTime);
+        numTerminatedProcesses++;
+        
+        runningState = -1;
+        schedule();
+    } else {
+        cout << "No process is currently running to end." << endl;
+    }
 }
+
+
 // Implements the F operation.
 void fork(int value)
 {
@@ -326,32 +323,32 @@ void fork(int value)
 // Implements the R operation.
 void replace(string &argument)
 {
-  // TODO: Implement
-  // 1. Clear the CPU's program (cpu.pProgram->clear()).
-  // 2. Use createProgram() to read in the filename specified by argument into
-  // the CPU (*cpu.pProgram) a. Consider what to do if createProgram fails. I
-  // printed an error, incremented the cpu program counter and then returned.
-  // Note that createProgram can fail if the file could not be opened or did not
-  // exist.
-  // 3. Set the program counter to 0.
+    if (runningState == -1)
+    {
+        cout << "No process is currently running to replace its program." << endl;
+        return;
+    }
 
-  // 1. Clear the CPU's program
-  cpu.pProgram->clear();
+    // Clear the CPU's program
+    cpu.pProgram->clear();
 
-  // 2. Use createProgram() to read in the filename specified by the argument
-  // into the CPU
-  if (!createProgram(argument, *cpu.pProgram))
-  {
-    cout << "Error: Failed to load the program from file '" << argument << "'."
-         << endl;
-    cpu.programCounter++; // Increment the program counter to skip the failed
-                          // instruction
-    return;
-  }
+    // Use createProgram() to read in the filename specified by the argument into the CPU
+    if (!createProgram(argument, *cpu.pProgram))
+    {
+        cout << "Error: Failed to load the program from file '" << argument << "'." << endl;
+        cpu.programCounter++; // Increment the program counter to skip the failed instruction
+        return;
+    }
 
-  // 3. Set the program counter to 0
-  cpu.programCounter = 0;
+    // Set the program counter to 0
+    cpu.programCounter = 0;
+
+    pcbTable[runningState].program = *cpu.pProgram;
+    pcbTable[runningState].programCounter = cpu.programCounter;
+
+    cout << "Replaced current program with program from file '" << argument << "'." << endl;
 }
+
 
 void reportSystemState()
 {
@@ -362,7 +359,7 @@ void reportSystemState()
   int processCount = 0;
   for (size_t i = 0; i < pcbTable.size(); ++i)
   {
-    if (pcbTable[i].state == STATE_READY || pcbTable[i].state == STATE_BLOCKED || pcbTable[i].state == STATE_RUNNING)
+    if (pcbTable[i].state == STATE_READY || pcbTable[i].state == STATE_BLOCKED || pcbTable[i].state == STATE_RUNNING || pcbTable[i].state == STATE_TERMINATED)
     {
       processCount++;
     }
@@ -372,7 +369,7 @@ void reportSystemState()
 
   for (size_t i = 0; i < pcbTable.size(); ++i)
   {
-    if (pcbTable[i].state == STATE_READY || pcbTable[i].state == STATE_BLOCKED || pcbTable[i].state == STATE_RUNNING)
+    if (pcbTable[i].state == STATE_READY || pcbTable[i].state == STATE_BLOCKED || pcbTable[i].state == STATE_RUNNING || pcbTable[i].state == STATE_TERMINATED)
     {
       cout << "Process ID: " << pcbTable[i].processId << ", State: ";
       switch (pcbTable[i].state)
@@ -386,6 +383,9 @@ void reportSystemState()
       case STATE_RUNNING:
         cout << "Running";
         break;
+      case STATE_TERMINATED:
+        cout << "Terminated";
+        break;
       default:
         cout << "Unknown";
         break;
@@ -393,6 +393,7 @@ void reportSystemState()
       cout << ", Program Counter: " << pcbTable[i].programCounter << ", Value: " << pcbTable[i].value << endl;
     }
   }
+  cout << "Current running state: " << runningState << endl;
 }
 
 void spawnReporter()
@@ -431,73 +432,65 @@ void calculateAverageTurnaroundTime()
 
 // Implements the Q command.
 // Implements the Q command.
-void quantum()
-{
-  if (runningState == -1)
-  {
-    cout << "No processes are running" << endl;
+void quantum() {
+    if (runningState == -1) {
+        cout << "No processes are running" << endl;
+        ++timestamp;
+        return;
+    }
+    
+    Instruction instruction;
+    if (cpu.programCounter < cpu.pProgram->size()) {
+        instruction = (*cpu.pProgram)[cpu.programCounter];
+        ++cpu.programCounter;
+    } else {
+        cout << "End of program reached without E operation" << endl;
+        instruction.operation = 'E';
+    }
+    
+    cout << "In quantum instruction " << instruction.operation;
+    if (instruction.operation == 'S' || instruction.operation == 'A' || instruction.operation == 'D' || instruction.operation == 'F') {
+        cout << " " << instruction.intArg;
+    }
+    if (instruction.operation == 'R') {
+        cout << " " << instruction.stringArg;
+    }
+    cout << endl;
+    
+    switch (instruction.operation) {
+        case 'S':
+            set(instruction.intArg);
+            break;
+        case 'A':
+            add(instruction.intArg);
+            break;
+        case 'D':
+            decrement(instruction.intArg);
+            break;
+        case 'B':
+            block();
+            return;
+        case 'E':
+            end();
+            return;
+        case 'F':
+            fork(instruction.intArg);
+            break;
+        case 'R':
+            replace(instruction.stringArg);
+            break;
+    }
+    
+    if (runningState != -1) {
+        pcbTable[runningState].programCounter = cpu.programCounter;
+        pcbTable[runningState].value = cpu.value;
+    }
+    
     ++timestamp;
-    return;
-  }
-
-  cout << "In quantum";
-
-  Instruction instruction;
-  if (cpu.programCounter < cpu.pProgram->size())
-  {
-    instruction = (*cpu.pProgram)[cpu.programCounter];
-    ++cpu.programCounter;
-  }
-  else
-  {
-    cout << "End of program reached without E operation" << endl;
-    instruction.operation = 'E';
-  }
-
-  cout << " instruction " << instruction.operation;
-  if (instruction.operation == 'S' || instruction.operation == 'A' || instruction.operation == 'D' || instruction.operation == 'F')
-  {
-    cout << " " << instruction.intArg;
-  }
-  if (instruction.operation == 'R')
-  {
-    cout << " " << instruction.stringArg;
-  }
-  cout << endl;
-
-  switch (instruction.operation)
-  {
-  case 'S':
-    set(instruction.intArg);
-    break;
-  case 'A':
-    add(instruction.intArg);
-    break;
-  case 'D':
-    decrement(instruction.intArg);
-    break;
-  case 'B':
-    block();
-    break;
-  case 'E':
-    end();
     schedule();
-    break;
-  case 'F':
-    fork(instruction.intArg);
-    break;
-  case 'R':
-    replace(instruction.stringArg);
-    break;
-  }
-
-  // Update the PCB entry with the current CPU state
-  pcbTable[runningState].programCounter = cpu.programCounter;
-  pcbTable[runningState].value = cpu.value;
-
-  ++timestamp;
-  schedule();
 }
+
+
 
 // Implements the U command.
 void unblock()
@@ -586,54 +579,36 @@ int runProcessManager(int fileDescriptor)
   return EXIT_SUCCESS;
 }
 
-int main(int argc, char *argv[])
-{
-  int pipeDescriptors[2];
-  pid_t processMgrPid;
-  char ch;
-  int result;
-  // TODO: Create a pipe
-  pipe(pipeDescriptors);
-  // USE fork() SYSTEM CALL to create the child process and save the value
-  // returned in processMgrPid variable
-  if ((processMgrPid = fork()) == -1)
-    exit(1); /* FORK FAILED */
-  if (processMgrPid == 0)
-  {
-    // The process manager process is running.
-    // Close the unused write end of the pipe for the process manager process.
-    close(pipeDescriptors[1]);
-    // Run the process manager.
-    result = runProcessManager(pipeDescriptors[0]);
-    // Close the read end of the pipe for the process manager process (for
-    // cleanup purposes).
-    close(pipeDescriptors[0]);
-    _exit(result);
-  }
-  else
-  {
-    // The commander process is running.
-    // Close the unused read end of the pipe for the commander process.
-    close(pipeDescriptors[0]);
-    // Loop until a 'T' is written or until the pipe is broken.
-    do
-    {
-      cout << "Enter Q, P, U or T" << endl;
-      cout << "$ ";
-      cin >> ch;
-      // Pass commands to the process manager process via the pipe.
-      if (write(pipeDescriptors[1], &ch, sizeof(ch)) != sizeof(ch))
-      {
-        // Assume the child process exited, breaking the pipe.
-        break;
-      }
-    } while (ch != 'T');
-    write(pipeDescriptors[1], &ch, sizeof(ch));
-    // Close the write end of the pipe for the commander process (for cleanup
-    // purposes).
-    close(pipeDescriptors[1]);
-    // Wait for the process manager to exit.
-    wait(&result);
-  }
-  return result;
+int main(int argc, char *argv[]) {
+    int pipeDescriptors[2];
+    pid_t processMgrPid;
+    char ch;
+    int result;
+    
+    pipe(pipeDescriptors);
+    
+    if ((processMgrPid = fork()) == -1)
+        exit(1); /* FORK FAILED */
+    if (processMgrPid == 0) {
+        close(pipeDescriptors[1]);
+        result = runProcessManager(pipeDescriptors[0]);
+        close(pipeDescriptors[0]);
+        _exit(result);
+    } else {
+        close(pipeDescriptors[0]);
+        do {
+            cout << "Enter Q, P, U or T" << endl;
+            cout << "$ ";
+            cin >> ch;
+            if (write(pipeDescriptors[1], &ch, sizeof(ch)) != sizeof(ch)) {
+                break;
+            }
+        } while (ch != 'T');
+        write(pipeDescriptors[1], &ch, sizeof(ch));
+        close(pipeDescriptors[1]);
+        wait(&result);
+    }
+    return result;
 }
+
+
