@@ -193,34 +193,35 @@ void decrement(int value)
 void schedule() {
     if (runningState != -1) {
         cout << "A process is already running." << endl;
-        return; // Ensures we don't override an already running process
-    }
-    
-    bool foundReadyProcess = false;
-    while (!readyState.empty() && !foundReadyProcess) {
-        int nextProcessId = readyState.front();
-        readyState.pop_front();
-
-        PcbEntry &nextProcess = pcbTable[nextProcessId];
-        if (nextProcess.state == STATE_TERMINATED) {
-            continue; // Skip terminated processes
-        }
-
-        nextProcess.state = STATE_RUNNING;
-        cpu.pProgram = &nextProcess.program;
-        cpu.programCounter = nextProcess.programCounter;
-        cpu.value = nextProcess.value;
-        runningState = nextProcessId;
-        foundReadyProcess = true;
-
-        cout << "Scheduling process " << nextProcessId << " with program counter " << cpu.programCounter << " and value " << cpu.value << endl;
+        return; // Keeps the current process running if it's already there
     }
 
-    if (!foundReadyProcess) {
-        runningState = -1; // No ready process found, ensure no process is mistakenly set as running
-        cout << "Ready queue is empty or no viable process found. No process scheduled." << endl;
+    if (readyState.empty()) {
+        cout << "Ready queue is empty. No process to schedule." << endl;
+        runningState = -1; // Explicitly set no running process
+        return;
     }
+
+    // Get the next process from the ready queue
+    int nextProcessId = readyState.front();
+    readyState.pop_front();
+
+    PcbEntry &nextProcess = pcbTable[nextProcessId];
+    if (nextProcess.state == STATE_TERMINATED) {
+        schedule(); // Recursively call schedule if the next process is terminated
+        return;
+    }
+
+    // Set the next process as the running process
+    nextProcess.state = STATE_RUNNING;
+    runningState = nextProcessId;
+    cpu.pProgram = &nextProcess.program;
+    cpu.programCounter = nextProcess.programCounter;
+    cpu.value = nextProcess.value;
+
+    cout << "Scheduling process " << nextProcessId << " as running." << endl;
 }
+
 
 
 
@@ -282,21 +283,21 @@ void end() {
 
 
 // Implements the F operation.
-void fork(int value)
-{
+void fork(int value) {
   // Get a free PCB index
   int freeIndex = pcbTable.size();
   pcbTable.resize(freeIndex + 1); // Ensure space for the new process
 
-  if (runningState == -1)
-  {
+  if (runningState == -1) {
     cout << "No process is currently running." << endl;
     return;
   }
   PcbEntry &parentProcess = pcbTable[runningState];
+  parentProcess.program = *cpu.pProgram;
+  parentProcess.programCounter = cpu.programCounter;
+  parentProcess.value = cpu.value;
 
-  if (value < 0)
-  {
+  if (value < 0) {
     cout << "Value is out of bounds." << endl;
     return;
   }
@@ -304,21 +305,30 @@ void fork(int value)
   // Initialize the new process (child)
   pcbTable[freeIndex].processId = freeIndex;
   pcbTable[freeIndex].parentProcessId = parentProcess.processId;
-  pcbTable[freeIndex].programCounter = parentProcess.programCounter + 1; // Child starts from the next instruction
-  pcbTable[freeIndex].value = cpu.value;                                 // Inherit parent's value
+  pcbTable[freeIndex].programCounter = parentProcess.programCounter; // Child starts from the next instruction
+  pcbTable[freeIndex].value = parentProcess.value;                       // Inherit parent's value
   pcbTable[freeIndex].priority = parentProcess.priority;
-  pcbTable[freeIndex].state = STATE_READY;
+  pcbTable[freeIndex].state = STATE_RUNNING;
   pcbTable[freeIndex].startTime = timestamp;
-  pcbTable[freeIndex].program = parentProcess.program;
+  pcbTable[freeIndex].program = vector<Instruction>(parentProcess.program);
 
-  readyState.push_back(freeIndex);
+  cout << "Parent process " << parentProcess.processId << " program address: " << &parentProcess.program << endl;
+  cout << "Child process " << pcbTable[freeIndex].processId << " program address: " << &pcbTable[freeIndex].program << endl;
 
-  // Update the parent's program counter to continue after the fork
-  parentProcess.programCounter += value + 1;
-  parentProcess.state = STATE_RUNNING; // Ensure parent stays running
+  // Temporarily set the child as the running process
+  int oldRunningState = runningState;
+  runningState = freeIndex;
 
-  // Don't push the parent to the ready queue until it blocks or ends
+
+  // Update the parent's program counter and push it to the ready queue
+  parentProcess.programCounter += value; // Parent continues after 'value' more instructions
+  parentProcess.state = STATE_READY; // Move parent to ready state
+  readyState.push_back(oldRunningState); // Add parent back to ready queue
+
+  // Now call the scheduler to decide the next step
+  schedule();
 }
+
 
 // Implements the R operation.
 void replace(string &argument)
@@ -433,6 +443,8 @@ void calculateAverageTurnaroundTime()
 // Implements the Q command.
 // Implements the Q command.
 void quantum() {
+    cout << cpu.pProgram << endl;
+
     if (runningState == -1) {
         cout << "No processes are running" << endl;
         ++timestamp;
