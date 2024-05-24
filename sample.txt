@@ -1,0 +1,103 @@
+(base) davelradindra@Davels-MacBook-Air-2 test % ./comander                  
+Enter Q, P, U or T
+$ Q
+Enter Q, P, U or T
+$ In quantum instruction S 1000
+A process is already running.
+P
+Enter Q, P, U or T
+$ ****************************************************************
+The current system state is as follows:
+****************************************************************
+1 processes in the PCB table.
+Process ID: 0, State: Ready, Program Counter: 1, Value: 1000
+Current running state: 0
+Q
+Enter Q, P, U or T
+$ In quantum instruction A 19
+A process is already running.
+Q
+Enter Q, P, U or T
+$ In quantum instruction A 20
+A process is already running.
+Q
+Enter Q, P, U or T
+$ In quantum instruction D 53
+A process is already running.
+Q
+Enter Q, P, U or T
+$ In quantum instruction A 55
+A process is already running.
+Q
+Enter Q, P, U or T
+$ In quantum instruction F 1
+A process is already running.
+P
+Enter Q, P, U or T
+$ ****************************************************************
+The current system state is as follows:
+****************************************************************
+2 processes in the PCB table.
+Process ID: 0, State: Running, Program Counter: 6, Value: 1041
+Process ID: 1, State: Ready, Program Counter: 6, Value: 1041
+Current running state: 0
+Q
+Enter Q, P, U or T
+$ In quantum instruction R file_a
+Replaced current program with program from file 'file_a'.
+A process is already running.
+P
+Enter Q, P, U or T
+$ ****************************************************************
+The current system state is as follows:
+****************************************************************
+2 processes in the PCB table.
+Process ID: 0, State: Running, Program Counter: 0, Value: 1041
+Process ID: 1, State: Ready, Program Counter: 6, Value: 1041
+Current running state: 0
+Q
+Enter Q, P, U or T
+$ In quantum instruction S 2000
+A process is already running.
+Q
+Enter Q, P, U or T
+$ In quantum instruction A 100
+A process is already running.
+Q
+Enter Q, P, U or T
+$ In quantum instruction D 50
+A process is already running.
+Q
+Enter Q, P, U or T
+$ In quantum instruction E
+Process 0 terminated.
+Scheduling process 1 with program counter 6 and value 1041
+P
+Enter Q, P, U or T
+$ ****************************************************************
+The current system state is as follows:
+****************************************************************
+2 processes in the PCB table.
+Process ID: 0, State: Terminated, Program Counter: 3, Value: 2050
+Process ID: 1, State: Running, Program Counter: 6, Value: 1041
+Current running state: 1
+Q
+Enter Q, P, U or T
+$ End of program reached without E operation
+In quantum instruction E
+Process 1 terminated.
+Ready queue is empty or no viable process found. No process scheduled.
+P
+Enter Q, P, U or T
+$ ****************************************************************
+The current system state is as follows:
+****************************************************************
+2 processes in the PCB table.
+Process ID: 0, State: Terminated, Program Counter: 3, Value: 2050
+Process ID: 1, State: Terminated, Program Counter: 6, Value: 1041
+Current running state: -1
+Q
+Enter Q, P, U or T
+$ No processes are running
+^C
+(base) davelradindra@Davels-MacBook-Air-2 test % 
