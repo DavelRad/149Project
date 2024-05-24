@@ -312,12 +312,14 @@ void fork(int value) {
   pcbTable[freeIndex].startTime = timestamp;
   pcbTable[freeIndex].program = vector<Instruction>(parentProcess.program);
 
+  cout << "current program address: " << cpu.pProgram << endl;
   cout << "Parent process " << parentProcess.processId << " program address: " << &parentProcess.program << endl;
   cout << "Child process " << pcbTable[freeIndex].processId << " program address: " << &pcbTable[freeIndex].program << endl;
 
   // Temporarily set the child as the running process
   int oldRunningState = runningState;
   runningState = freeIndex;
+  cpu.pProgram = &pcbTable[freeIndex].program;
 
 
   // Update the parent's program counter and push it to the ready queue
